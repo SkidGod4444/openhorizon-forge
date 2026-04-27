@@ -1,0 +1,26 @@
+{
+  "name": "@openhorizon/control",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "build": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.7.5",
+    "@openhorizon/contracts": "*",
+    "@openhorizon/db": "*",
+    "hono": "^4.10.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "@repo/typescript-config": "*",
+    "@types/bun": "^1.3.1",
+    "eslint": "^9.39.1",
+    "typescript": "5.9.2"
+  }
+}
