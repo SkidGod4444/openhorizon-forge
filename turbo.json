@@ -6,7 +6,9 @@
     "DATABASE_MAX_CONNECTIONS",
     "PORT",
     "SLURM_MOCK_MODE",
-    "OHFORGE_API_BASE_URL"
+    "OHFORGE_API_BASE_URL",
+    "OHCTL_API_KEY",
+    "CONTROL_API_KEY"
   ],
   "tasks": {
     "build": {

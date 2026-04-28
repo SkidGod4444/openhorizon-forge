@@ -64,6 +64,7 @@ Environment variables:
 
 - DB package: copy `packages/db/.env.example` to `packages/db/.env`
 - Control API: copy `apps/control/.env.example` to `apps/control/.env`
+- CLI auth (optional): `OHCTL_API_KEY=<key>`
 
 ## Control API Endpoints (V1 scaffold)
 
@@ -83,3 +84,11 @@ Environment variables:
 - `ohctl job resume <id> --checkpoint step-1000`
 - `ohctl deploy --job-id <id> --checkpoint step-1000 --backend vllm --gpu 1`
 - `ohctl endpoints list`
+
+## CLI Release (macOS/Linux/Windows)
+
+- GoReleaser config: `packages/ohforge/.goreleaser.yaml`
+- GitHub workflow: `.github/workflows/release-ohctl.yml`
+- Publish by pushing a tag:
+  - `git tag ohctl-v1.0.0 && git push origin ohctl-v1.0.0`
+- Windows users will get `ohctl.exe` in release zip assets.

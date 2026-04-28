@@ -30,6 +30,8 @@ Examples:
 - Default API base URL: `http://localhost:8080`
 - Override with env var:
   - `OHFORGE_API_BASE_URL=http://localhost:8080`
+- Optional API key for protected control API:
+  - `OHCTL_API_KEY=<your-control-api-key>`
 
 ## Run and build from repo root
 
@@ -38,6 +40,17 @@ Examples:
 - Build:
   - `bun run cli:build`
   - Output binary: `bin/ohctl`
+
+## Release distribution (macOS/Linux/Windows)
+
+- GoReleaser config:
+  - `packages/ohforge/.goreleaser.yaml`
+- GitHub Actions workflow:
+  - `.github/workflows/release-ohctl.yml`
+- Tag format to publish:
+  - `ohctl-v1.0.0`
+
+Windows artifacts are produced as `.zip` archives and include `ohctl.exe`.
 
 ## Where to modify behavior
 

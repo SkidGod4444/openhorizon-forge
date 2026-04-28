@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import {
   createJobRequestSchema,
   createJobResponseSchema,
@@ -25,6 +26,22 @@ import { cancelJob, getJobStatus, readJobLogs, submitJob } from "./modules/slurm
 await bootstrapDatabase();
 
 const app = new Hono();
+const controlAPIKey = process.env.CONTROL_API_KEY;
+
+app.use("*", async (c, next) => {
+  if (!controlAPIKey || c.req.path === "/healthz") {
+    await next();
+    return;
+  }
+
+  const authHeader = c.req.header("authorization");
+  const expected = `Bearer ${controlAPIKey}`;
+  if (!authHeader || authHeader !== expected) {
+    throw new HTTPException(401, { message: "Unauthorized" });
+  }
+
+  await next();
+});
 
 app.get("/healthz", (c) => {
   return c.json({

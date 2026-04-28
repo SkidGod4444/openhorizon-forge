@@ -56,6 +56,13 @@ func apiBaseURL() string {
 	return "http://localhost:8080"
 }
 
+func apiKey() string {
+	if value := os.Getenv("OHCTL_API_KEY"); value != "" {
+		return value
+	}
+	return ""
+}
+
 func doRequest(method string, path string, body any) error {
 	var payload io.Reader
 	if body != nil {
@@ -72,6 +79,9 @@ func doRequest(method string, path string, body any) error {
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if key := apiKey(); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
