@@ -1,7 +1,13 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
-  "globalEnv": ["DATABASE_URL", "DATABASE_MAX_CONNECTIONS", "PORT"],
+  "globalEnv": [
+    "DATABASE_URL",
+    "DATABASE_MAX_CONNECTIONS",
+    "PORT",
+    "SLURM_MOCK_MODE",
+    "OHFORGE_API_BASE_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
