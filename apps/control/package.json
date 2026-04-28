@@ -13,6 +13,7 @@
     "@hono/zod-validator": "^0.7.5",
     "@openhorizon/contracts": "*",
     "@openhorizon/db": "*",
+    "drizzle-orm": "^0.44.7",
     "hono": "^4.10.1",
     "zod": "^4.1.12"
   },
