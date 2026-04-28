@@ -1,17 +1,20 @@
+// Package main is the entrypoint for the `ohctl` binary.
+//
+// This file is intentionally tiny: all command logic lives in
+// internal/cli so contributors can find it quickly. Adding a new
+// command happens in internal/cli, not here.
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/openhorizon/ohforge/internal/cli"
 )
 
 func main() {
-	// Entrypoint only delegates to the CLI package.
-	// Keeping this file tiny makes it easy for beginners to locate
-	// "where execution starts" without mixing command logic here.
 	if err := cli.Run(os.Args[1:]); err != nil {
-		_, _ = os.Stderr.WriteString(err.Error() + "\n")
+		fmt.Fprintln(os.Stderr, "Error:", err.Error())
 		os.Exit(1)
 	}
 }
