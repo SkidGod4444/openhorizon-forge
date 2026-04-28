@@ -61,6 +61,7 @@ Status legend:
 - [x] Environment variable reference (what each env var is used for)
 - [x] Task tracker (`TASKS.md`)
 - [-] Operator deployment guide (DGX + SLURM + Postgres + MinIO)
+- [x] K8s namespace-only setup path for restricted DGX access
 - [ ] User quickstart for end-to-end train workflow
 
 ## Production Readiness Exit Criteria

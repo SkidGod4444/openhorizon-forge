@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhorizon-control
+  labels:
+    app: openhorizon-control
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openhorizon-control
+  template:
+    metadata:
+      labels:
+        app: openhorizon-control
+    spec:
+      containers:
+        - name: control
+          image: ghcr.io/openhorizon/openhorizon-control:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: openhorizon-control-secrets
+                  key: DATABASE_URL
+            - name: DATABASE_MAX_CONNECTIONS
+              value: "10"
+            - name: CONTROL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openhorizon-control-secrets
+                  key: CONTROL_API_KEY
+            - name: SLURM_MOCK_MODE
+              value: "false"
+            - name: SCHEDULER_BACKEND
+              value: "k8s"
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: K8S_TRAIN_IMAGE
+              value: "python:3.11"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
