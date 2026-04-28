@@ -62,15 +62,36 @@ bun run db:studio
 
 Environment variables:
 
-- DB package: copy `packages/db/.env.example` to `packages/db/.env`
-- Control API: copy `apps/control/.env.example` to `apps/control/.env`
-- CLI auth (optional): `OHCTL_API_KEY=<key>`
+| Variable | Used By | Purpose | Default |
+|---|---|---|---|
+| `DATABASE_URL` | `packages/db`, `apps/control` | Postgres connection string for schema/migrations/runtime DB access. | `postgres://postgres:postgres@localhost:5432/openhorizon` |
+| `DATABASE_MAX_CONNECTIONS` | `packages/db` | Max DB pool size for Postgres client. | `10` |
+| `PORT` | `apps/control` | HTTP port for control API server. | `8080` |
+| `CONTROL_API_KEY` | `apps/control` | If set, all endpoints except `/healthz` require bearer auth. | empty (auth disabled) |
+| `SLURM_MOCK_MODE` | `apps/control` | Scheduler/log adapter mock mode toggle (`false` = real SLURM). | enabled unless explicitly `false` |
+| `SCHEDULER_BACKEND` | `apps/control` | Runtime backend for job execution: `slurm` or `k8s`. | `slurm` |
+| `SLURM_SCRIPTS_DIR` | `apps/control` | Directory where generated sbatch wrapper scripts are written. | `/tmp/openhorizon/slurm` |
+| `SLURM_LOGS_DIR` | `apps/control` | Directory where SLURM job stdout/stderr logs are written. | `/tmp/openhorizon/logs` |
+| `K8S_NAMESPACE` | `apps/control` | Kubernetes namespace for training Jobs (k8s backend only). | `default` |
+| `K8S_TRAIN_IMAGE` | `apps/control` | Container image used for training Job execution (k8s backend only). | `python:3.11` |
+| `OHCTL_API_BASE_URL` | `packages/ohforge` | Base URL for CLI API requests. | `http://localhost:8080` |
+| `OHCTL_API_KEY` | `packages/ohforge` | Bearer token used by CLI for protected control API. | empty |
+| `OHFORGE_API_BASE_URL` | `packages/ohforge` | Legacy alias for CLI base URL (backward compatibility). | none |
+
+Setup:
+- DB package env: copy `packages/db/.env.example` to `packages/db/.env`
+- Control API env: copy `apps/control/.env.example` to `apps/control/.env`
 
 ## Control API Endpoints (V1 scaffold)
 
 - `GET /healthz`
 - `POST /v1/jobs`
 - `GET /v1/jobs/:jobId`
+- `GET /v1/jobs/:jobId/checkpoints`
+- `POST /v1/jobs/:jobId/resume`
+- `GET /v1/jobs/:jobId/artifacts`
+- `GET /v1/jobs/:jobId/artifacts/:artifactId/download`
+- `POST /v1/jobs/:jobId/artifacts/finalize`
 
 ## CLI Commands (V1 scaffold)
 
@@ -81,9 +102,10 @@ Environment variables:
 - `ohctl job sync <id>`
 - `ohctl job cancel <id>`
 - `ohctl job checkpoints <id>`
+- `ohctl job artifacts <id>`
+- `ohctl job artifact get <id> <artifact-id>`
 - `ohctl job resume <id> --checkpoint step-1000`
-- `ohctl deploy --job-id <id> --checkpoint step-1000 --backend vllm --gpu 1`
-- `ohctl endpoints list`
+- `ohctl version`
 
 ## CLI Release (macOS/Linux/Windows)
 
@@ -92,3 +114,21 @@ Environment variables:
 - Publish by pushing a tag:
   - `git tag ohctl-v1.0.0 && git push origin ohctl-v1.0.0`
 - Windows users will get `ohctl.exe` in release zip assets.
+
+## CI
+
+- Workflow: `.github/workflows/ci.yml`
+- Runs on PRs and pushes to `main`:
+  - monorepo typecheck + lint
+  - control API smoke test with Postgres
+  - `ohctl` build + `ohctl version` on Linux/macOS/Windows
+
+## DGX Setup
+
+- DGX/SLURM runbook:
+  - `scripts/dgx/README.md`
+- Includes:
+  - systemd service installer for control API
+  - sample training script
+  - SLURM mode flow
+  - Kubernetes mode flow (`SCHEDULER_BACKEND=k8s`)

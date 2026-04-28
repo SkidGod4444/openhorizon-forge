@@ -12,6 +12,8 @@ builds:
     main: ./cmd/ohctl
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/openhorizon/ohforge/internal/cli.Version={{.Version}} -X github.com/openhorizon/ohforge/internal/cli.Commit={{.Commit}} -X github.com/openhorizon/ohforge/internal/cli.BuildDate={{.Date}}
     goos:
       - linux
       - darwin

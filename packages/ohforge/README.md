@@ -28,7 +28,9 @@ Examples:
 ## How it talks to backend
 
 - Default API base URL: `http://localhost:8080`
-- Override with env var:
+- Override with env var (preferred):
+  - `OHCTL_API_BASE_URL=http://localhost:8080`
+- Backward-compatible alias:
   - `OHFORGE_API_BASE_URL=http://localhost:8080`
 - Optional API key for protected control API:
   - `OHCTL_API_KEY=<your-control-api-key>`
@@ -40,6 +42,8 @@ Examples:
 - Build:
   - `bun run cli:build`
   - Output binary: `bin/ohctl`
+- Version:
+  - `bun run cli:run -- version`
 
 ## Release distribution (macOS/Linux/Windows)
 

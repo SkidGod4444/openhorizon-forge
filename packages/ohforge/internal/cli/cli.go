@@ -13,6 +13,14 @@ import (
 	"strconv"
 )
 
+var (
+	// Version, Commit, and BuildDate are injected at build/release time.
+	// Defaults are used for local dev builds.
+	Version   = "dev"
+	Commit    = "none"
+	BuildDate = "unknown"
+)
+
 func Run(args []string) error {
 	if len(args) == 0 {
 		printUsage()
@@ -22,10 +30,8 @@ func Run(args []string) error {
 	switch args[0] {
 	case "job":
 		return runJob(args[1:])
-	case "deploy":
-		return runDeploy(args[1:])
-	case "endpoints":
-		return runEndpoints(args[1:])
+	case "version":
+		return runVersion()
 	default:
 		printUsage()
 		return nil
@@ -41,15 +47,19 @@ func printUsage() {
   job sync <job-id>
   job cancel <job-id>
   job checkpoints <job-id>
+  job artifacts <job-id>
+  job artifact get <job-id> <artifact-id>
   job resume <job-id> --checkpoint <step-1000|checkpoint-id> [--requestedBy <user>]
-  deploy --job-id <id> --checkpoint <step-1000|checkpoint-id> [--backend vllm|triton] [--gpu 1]
-  endpoints list [--status <status>] [--limit 20] [--offset 0]
+  version
 
 Compatibility:
   You can still use --job-id for all job commands.`)
 }
 
 func apiBaseURL() string {
+	if value := os.Getenv("OHCTL_API_BASE_URL"); value != "" {
+		return value
+	}
 	if value := os.Getenv("OHFORGE_API_BASE_URL"); value != "" {
 		return value
 	}
@@ -152,8 +162,10 @@ func runJob(args []string) error {
 		q.Set("limit", strconv.Itoa(*limit))
 		q.Set("offset", strconv.Itoa(*offset))
 		return doRequest(http.MethodGet, "/v1/jobs?"+q.Encode(), nil)
-	case "status", "logs", "sync", "cancel", "checkpoints", "resume":
+	case "status", "logs", "sync", "cancel", "checkpoints", "artifacts", "resume":
 		return runJobWithID(args)
+	case "artifact":
+		return runJobArtifact(args[1:])
 	default:
 		printUsage()
 		return nil
@@ -207,48 +219,33 @@ func runJobWithID(args []string) error {
 			"checkpoint":  *checkpoint,
 			"requestedBy": *requestedBy,
 		})
+	case "artifacts":
+		return doRequest(http.MethodGet, "/v1/jobs/"+*jobID+"/artifacts", nil)
 	default:
 		return nil
 	}
 }
 
-func runDeploy(args []string) error {
-	fs := flag.NewFlagSet("deploy", flag.ContinueOnError)
-	jobID := fs.String("job-id", "", "job id")
-	checkpoint := fs.String("checkpoint", "", "checkpoint ref")
-	backend := fs.String("backend", "vllm", "backend")
-	gpu := fs.Int("gpu", 1, "gpu allocation")
-	if err := fs.Parse(args); err != nil {
-		return err
+func runJobArtifact(args []string) error {
+	if len(args) < 3 || args[0] != "get" {
+		return errors.New("usage: job artifact get <job-id> <artifact-id>")
 	}
-	if *jobID == "" || *checkpoint == "" {
-		return errors.New("--job-id and --checkpoint are required")
-	}
-	return doRequest(http.MethodPost, "/v1/deployments", map[string]any{
-		"jobId":         *jobID,
-		"checkpoint":    *checkpoint,
-		"backend":       *backend,
-		"gpuAllocation": *gpu,
-	})
+	jobID := args[1]
+	artifactID := args[2]
+	return doRequest(http.MethodGet, "/v1/jobs/"+jobID+"/artifacts/"+artifactID+"/download", nil)
 }
 
-func runEndpoints(args []string) error {
-	if len(args) == 0 || args[0] != "list" {
-		printUsage()
-		return nil
+func runVersion() error {
+	out := map[string]string{
+		"version":   Version,
+		"commit":    Commit,
+		"buildDate": BuildDate,
 	}
-	fs := flag.NewFlagSet("endpoints list", flag.ContinueOnError)
-	status := fs.String("status", "", "endpoint status")
-	limit := fs.Int("limit", 20, "page size")
-	offset := fs.Int("offset", 0, "page offset")
-	if err := fs.Parse(args[1:]); err != nil {
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
 		return err
 	}
-	q := url.Values{}
-	if *status != "" {
-		q.Set("status", *status)
-	}
-	q.Set("limit", strconv.Itoa(*limit))
-	q.Set("offset", strconv.Itoa(*offset))
-	return doRequest(http.MethodGet, "/v1/endpoints?"+q.Encode(), nil)
+	_, _ = os.Stdout.Write(data)
+	_, _ = os.Stdout.Write([]byte("\n"))
+	return nil
 }

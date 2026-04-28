@@ -10,9 +10,6 @@ export async function bootstrapDatabase(): Promise<void> {
       IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'checkpoint_status') THEN
         CREATE TYPE checkpoint_status AS ENUM ('pending', 'synced', 'deployed', 'evicted');
       END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'endpoint_status') THEN
-        CREATE TYPE endpoint_status AS ENUM ('provisioning', 'ready', 'failed', 'terminated');
-      END IF;
     END
     $$;
   `;
@@ -68,17 +65,20 @@ export async function bootstrapDatabase(): Promise<void> {
   `;
 
   await sql`
-    CREATE TABLE IF NOT EXISTS endpoints (
+    CREATE TABLE IF NOT EXISTS job_artifacts (
       id TEXT PRIMARY KEY,
       job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
-      checkpoint_id TEXT,
-      backend TEXT NOT NULL,
-      model TEXT NOT NULL,
-      url TEXT NOT NULL,
-      gpu_allocation INTEGER NOT NULL,
-      status endpoint_status NOT NULL DEFAULT 'provisioning',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      format TEXT NOT NULL,
+      storage_path TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      checksum_sha256 TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `;
+
+  // Clean up legacy deploy-only artifacts from older schema versions.
+  await sql`DROP TABLE IF EXISTS endpoints;`;
+  await sql`DROP TYPE IF EXISTS endpoint_status;`;
 }

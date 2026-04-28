@@ -9,13 +9,15 @@ import {
 import { bootstrapDatabase } from "@openhorizon/db";
 import {
   assignSlurmJobId,
-  createEndpointDeployment,
+  createArtifactForJob,
   createResumeJobFromCheckpoint,
   createJob,
+  ensureFinalModelArtifact,
   findCheckpointForJob,
+  getArtifactForJob,
   getJobById,
+  listArtifactsForJob,
   listCheckpointsForJob,
-  listEndpoints,
   listJobs,
   listRecentEvents,
   markJobCancelled,
@@ -48,45 +50,6 @@ app.get("/healthz", (c) => {
     ok: true,
     service: "openhorizon-control",
     timestamp: new Date().toISOString(),
-  });
-});
-
-app.get("/v1/endpoints", async (c) => {
-  const status = c.req.query("status");
-  const limitValue = Number(c.req.query("limit") ?? "20");
-  const offsetValue = Number(c.req.query("offset") ?? "0");
-  const limit = Number.isFinite(limitValue)
-    ? Math.max(1, Math.min(100, Math.trunc(limitValue)))
-    : 20;
-  const offset = Number.isFinite(offsetValue) ? Math.max(0, Math.trunc(offsetValue)) : 0;
-
-  const statusFilter =
-    status && ["provisioning", "ready", "failed", "terminated"].includes(status)
-      ? (status as "provisioning" | "ready" | "failed" | "terminated")
-      : undefined;
-
-  const result = await listEndpoints({
-    status: statusFilter,
-    limit,
-    offset,
-  });
-
-  return c.json({
-    items: result.items.map((endpoint) => ({
-      id: endpoint.id,
-      jobId: endpoint.jobId,
-      checkpointId: endpoint.checkpointId,
-      backend: endpoint.backend,
-      model: endpoint.model,
-      url: endpoint.url,
-      gpuAllocation: endpoint.gpuAllocation,
-      status: endpoint.status,
-      createdAt: endpoint.createdAt.toISOString(),
-      updatedAt: endpoint.updatedAt.toISOString(),
-    })),
-    total: result.total,
-    limit,
-    offset,
   });
 });
 
@@ -142,6 +105,7 @@ app.post("/v1/jobs", zValidator("json", createJobRequestSchema), async (c) => {
       scriptPath: payload.script,
       gpus: payload.gpus,
       nodes: payload.nodes,
+      env: payload.env,
     });
     await assignSlurmJobId(job.id, schedulerResult.slurmJobId);
   } catch (error) {
@@ -202,6 +166,9 @@ app.post("/v1/jobs/:jobId/sync", async (c) => {
   const updated = await syncJobStatus(jobId, schedulerStatus.status, schedulerStatus.slurmState);
   if (!updated) {
     return c.json({ error: `Job ${jobId} not found after sync.` }, 404);
+  }
+  if (updated.status === "completed") {
+    await ensureFinalModelArtifact(jobId);
   }
 
   return c.json({
@@ -326,6 +293,8 @@ app.post("/v1/jobs/:jobId/resume", async (c) => {
       scriptPath: resumedJob.script,
       gpus: resumedJob.gpus,
       nodes: resumedJob.nodes,
+      env: resumedJob.env,
+      resumeFromCheckpointPath: checkpoint.storagePath,
     });
     await assignSlurmJobId(resumedJob.id, schedulerResult.slurmJobId);
   } catch (error) {
@@ -356,77 +325,113 @@ app.post("/v1/jobs/:jobId/resume", async (c) => {
   }, 202);
 });
 
-app.post("/v1/deployments", async (c) => {
+app.get("/v1/jobs/:jobId/artifacts", async (c) => {
+  const jobId = c.req.param("jobId");
+  const job = await getJobById(jobId);
+  if (!job) {
+    return c.json({ error: `Job ${jobId} not found.` }, 404);
+  }
+
+  const limitValue = Number(c.req.query("limit") ?? "50");
+  const limit = Number.isFinite(limitValue)
+    ? Math.max(1, Math.min(200, Math.trunc(limitValue)))
+    : 50;
+  const artifacts = await listArtifactsForJob(jobId, limit);
+  return c.json({
+    jobId,
+    artifacts: artifacts.map((artifact) => ({
+      id: artifact.id,
+      name: artifact.name,
+      kind: artifact.kind,
+      format: artifact.format,
+      storagePath: artifact.storagePath,
+      sizeBytes: artifact.sizeBytes,
+      checksumSha256: artifact.checksumSha256,
+      createdAt: artifact.createdAt.toISOString(),
+    })),
+  });
+});
+
+app.get("/v1/jobs/:jobId/artifacts/:artifactId/download", async (c) => {
+  const jobId = c.req.param("jobId");
+  const artifactId = c.req.param("artifactId");
+  const artifact = await getArtifactForJob(jobId, artifactId);
+  if (!artifact) {
+    return c.json({ error: `Artifact ${artifactId} not found for job ${jobId}.` }, 404);
+  }
+
+  // V1: return storage location metadata; signed URL support can be added later.
+  return c.json({
+    artifactId: artifact.id,
+    jobId: artifact.jobId,
+    name: artifact.name,
+    kind: artifact.kind,
+    format: artifact.format,
+    storagePath: artifact.storagePath,
+    sizeBytes: artifact.sizeBytes,
+    checksumSha256: artifact.checksumSha256,
+  });
+});
+
+app.post("/v1/jobs/:jobId/artifacts/finalize", async (c) => {
+  const jobId = c.req.param("jobId");
+  const job = await getJobById(jobId);
+  if (!job) {
+    return c.json({ error: `Job ${jobId} not found.` }, 404);
+  }
+
   let payload: {
-    jobId?: string;
-    checkpoint?: string;
-    backend?: "vllm" | "triton";
-    gpuAllocation?: number;
+    name?: string;
+    kind?: string;
+    format?: string;
+    storagePath?: string;
+    sizeBytes?: number;
+    checksumSha256?: string;
   } = {};
   try {
-    payload = (await c.req.json()) as {
-      jobId?: string;
-      checkpoint?: string;
-      backend?: "vllm" | "triton";
-      gpuAllocation?: number;
-    };
+    payload = (await c.req.json()) as typeof payload;
   } catch {
     return c.json({ error: "Invalid JSON body." }, 400);
   }
 
-  if (!payload.jobId) {
-    return c.json({ error: "`jobId` is required." }, 400);
-  }
-  if (!payload.checkpoint) {
-    return c.json({ error: "`checkpoint` is required. Use checkpoint id or step-<N>." }, 400);
-  }
-
-  const job = await getJobById(payload.jobId);
-  if (!job) {
-    return c.json({ error: `Job ${payload.jobId} not found.` }, 404);
-  }
-
-  const checkpoint = await findCheckpointForJob(payload.jobId, payload.checkpoint);
-  if (!checkpoint) {
+  if (!payload.name || !payload.kind || !payload.format || !payload.storagePath) {
     return c.json(
-      { error: `Checkpoint ${payload.checkpoint} not found for job ${payload.jobId}.` },
-      404,
+      { error: "`name`, `kind`, `format`, and `storagePath` are required." },
+      400,
     );
   }
-
-  const backend = payload.backend ?? "vllm";
-  const gpuAllocation = payload.gpuAllocation ?? 1;
-  if (!Number.isFinite(gpuAllocation) || gpuAllocation < 1 || gpuAllocation > 8) {
-    return c.json({ error: "`gpuAllocation` must be between 1 and 8." }, 400);
+  if (!payload.sizeBytes || !Number.isFinite(payload.sizeBytes) || payload.sizeBytes <= 0) {
+    return c.json({ error: "`sizeBytes` must be a positive number." }, 400);
   }
 
-  const deployment = await createEndpointDeployment({
-    jobId: payload.jobId,
-    checkpointId: checkpoint.id,
-    backend,
-    gpuAllocation: Math.trunc(gpuAllocation),
+  const artifact = await createArtifactForJob({
+    jobId,
+    name: payload.name,
+    kind: payload.kind,
+    format: payload.format,
+    storagePath: payload.storagePath,
+    sizeBytes: Math.trunc(payload.sizeBytes),
+    checksumSha256: payload.checksumSha256 ?? null,
   });
-  if (!deployment) {
-    return c.json({ error: "Failed to create deployment." }, 500);
+  if (!artifact) {
+    return c.json({ error: "Failed to finalize artifact." }, 500);
   }
 
   return c.json(
     {
-      deploymentId: deployment.id,
-      endpoint: {
-        id: deployment.id,
-        url: deployment.url,
-        backend: deployment.backend,
-        status: deployment.status,
-        gpuAllocation: deployment.gpuAllocation,
+      jobId,
+      artifact: {
+        id: artifact.id,
+        name: artifact.name,
+        kind: artifact.kind,
+        format: artifact.format,
+        storagePath: artifact.storagePath,
+        sizeBytes: artifact.sizeBytes,
+        checksumSha256: artifact.checksumSha256,
+        createdAt: artifact.createdAt.toISOString(),
       },
-      source: {
-        jobId: deployment.jobId,
-        checkpointId: deployment.checkpointId,
-      },
-      createdAt: deployment.createdAt.toISOString(),
     },
-    202,
+    201,
   );
 });
 

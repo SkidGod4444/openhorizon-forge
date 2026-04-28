@@ -1,5 +1,5 @@
 import type { CreateJobRequest } from "@openhorizon/contracts";
-import { checkpoints, db, endpoints, jobEvents, jobs } from "@openhorizon/db";
+import { checkpoints, db, jobArtifacts, jobEvents, jobs } from "@openhorizon/db";
 import { and, desc, eq } from "drizzle-orm";
 
 export async function createJob(payload: CreateJobRequest) {
@@ -252,92 +252,109 @@ export async function createResumeJobFromCheckpoint(
   return created ?? null;
 }
 
-type CreateEndpointInput = {
-  jobId: string;
-  checkpointId: string;
-  backend: "vllm" | "triton";
-  gpuAllocation: number;
-};
-
-export async function createEndpointDeployment(input: CreateEndpointInput) {
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, input.jobId)).limit(1);
-  if (!job) {
-    return null;
+export async function ensureFinalModelArtifact(jobId: string) {
+  const existing = await db
+    .select()
+    .from(jobArtifacts)
+    .where(and(eq(jobArtifacts.jobId, jobId), eq(jobArtifacts.kind, "final_model")))
+    .limit(1);
+  if (existing.length > 0) {
+    return existing[0];
   }
-  const [checkpoint] = await db
+
+  const latestCheckpoint = await db
     .select()
     .from(checkpoints)
-    .where(and(eq(checkpoints.jobId, input.jobId), eq(checkpoints.id, input.checkpointId)))
+    .where(eq(checkpoints.jobId, jobId))
+    .orderBy(desc(checkpoints.step))
     .limit(1);
+  const checkpoint = latestCheckpoint[0];
   if (!checkpoint) {
     return null;
   }
-
-  const now = new Date();
-  const endpointId = `ohe_${crypto.randomUUID()}`;
-  const url = `https://api.openhorizon.local/v1/endpoints/${endpointId}`;
-
-  await db.insert(endpoints).values({
-    id: endpointId,
-    jobId: input.jobId,
-    checkpointId: checkpoint.id,
-    backend: input.backend,
-    model: job.baseModel,
-    url,
-    gpuAllocation: input.gpuAllocation,
-    status: "ready",
-    createdAt: now,
-    updatedAt: now,
+  const artifactId = `oha_${crypto.randomUUID()}`;
+  await db.insert(jobArtifacts).values({
+    id: artifactId,
+    jobId,
+    name: `final-weights-step-${checkpoint.step}`,
+    kind: "final_model",
+    format: "checkpoint",
+    storagePath: checkpoint.storagePath,
+    sizeBytes: Math.max(1, Math.round(checkpoint.sizeGb * 1024 * 1024 * 1024)),
+    checksumSha256: null,
+    createdAt: new Date(),
   });
 
-  await db
-    .update(checkpoints)
-    .set({
-      status: "deployed",
-    })
-    .where(eq(checkpoints.id, checkpoint.id));
+  await db.insert(jobEvents).values({
+    id: `evt_${crypto.randomUUID()}`,
+    jobId,
+    type: "artifact.finalized",
+    message: `Final model artifact generated from checkpoint step ${checkpoint.step}.`,
+    payload: { artifactId, checkpointId: checkpoint.id },
+    createdAt: new Date(),
+  });
+
+  const [created] = await db.select().from(jobArtifacts).where(eq(jobArtifacts.id, artifactId)).limit(1);
+  return created ?? null;
+}
+
+export async function listArtifactsForJob(jobId: string, limit = 50) {
+  return db
+    .select()
+    .from(jobArtifacts)
+    .where(eq(jobArtifacts.jobId, jobId))
+    .orderBy(desc(jobArtifacts.createdAt))
+    .limit(limit);
+}
+
+export async function getArtifactForJob(jobId: string, artifactId: string) {
+  const [artifact] = await db
+    .select()
+    .from(jobArtifacts)
+    .where(and(eq(jobArtifacts.jobId, jobId), eq(jobArtifacts.id, artifactId)))
+    .limit(1);
+  return artifact ?? null;
+}
+
+type CreateArtifactInput = {
+  jobId: string;
+  name: string;
+  kind: string;
+  format: string;
+  storagePath: string;
+  sizeBytes: number;
+  checksumSha256?: string | null;
+};
+
+export async function createArtifactForJob(input: CreateArtifactInput) {
+  const now = new Date();
+  const artifactId = `oha_${crypto.randomUUID()}`;
+  await db.insert(jobArtifacts).values({
+    id: artifactId,
+    jobId: input.jobId,
+    name: input.name,
+    kind: input.kind,
+    format: input.format,
+    storagePath: input.storagePath,
+    sizeBytes: input.sizeBytes,
+    checksumSha256: input.checksumSha256 ?? null,
+    createdAt: now,
+  });
 
   await db.insert(jobEvents).values({
     id: `evt_${crypto.randomUUID()}`,
     jobId: input.jobId,
-    type: "endpoint.deployed",
-    message: `Deployed checkpoint ${checkpoint.id} to endpoint ${endpointId}.`,
+    type: "artifact.created",
+    message: `Artifact ${input.name} registered (${input.kind}).`,
     payload: {
-      endpointId,
-      backend: input.backend,
-      gpuAllocation: input.gpuAllocation,
+      artifactId,
+      kind: input.kind,
+      storagePath: input.storagePath,
+      sizeBytes: input.sizeBytes,
     },
     createdAt: now,
   });
 
-  const [endpoint] = await db
-    .select()
-    .from(endpoints)
-    .where(eq(endpoints.id, endpointId))
-    .limit(1);
-  return endpoint ?? null;
-}
-
-type ListEndpointsInput = {
-  status?: "provisioning" | "ready" | "failed" | "terminated";
-  limit: number;
-  offset: number;
-};
-
-export async function listEndpoints(input: ListEndpointsInput) {
-  const whereClause = input.status ? eq(endpoints.status, input.status) : undefined;
-  const rows = await db
-    .select()
-    .from(endpoints)
-    .where(whereClause)
-    .orderBy(desc(endpoints.createdAt))
-    .limit(input.limit)
-    .offset(input.offset);
-
-  const totalRows = await db.select({ value: endpoints.id }).from(endpoints).where(whereClause);
-
-  return {
-    items: rows,
-    total: totalRows.length,
-  };
+  const [artifact] = await db.select().from(jobArtifacts).where(eq(jobArtifacts.id, artifactId)).limit(1);
+  return artifact ?? null;
 }

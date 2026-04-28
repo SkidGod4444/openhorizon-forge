@@ -24,13 +24,6 @@ export const checkpointStatusEnum = pgEnum("checkpoint_status", [
   "evicted",
 ]);
 
-export const endpointStatusEnum = pgEnum("endpoint_status", [
-  "provisioning",
-  "ready",
-  "failed",
-  "terminated",
-]);
-
 export const jobs = pgTable("jobs", {
   id: text("id").primaryKey(),
   requestedBy: text("requested_by").notNull(),
@@ -90,21 +83,18 @@ export const checkpoints = pgTable("checkpoints", {
     .defaultNow(),
 });
 
-export const endpoints = pgTable("endpoints", {
+export const jobArtifacts = pgTable("job_artifacts", {
   id: text("id").primaryKey(),
   jobId: text("job_id")
     .notNull()
     .references(() => jobs.id, { onDelete: "cascade" }),
-  checkpointId: text("checkpoint_id"),
-  backend: text("backend").notNull(),
-  model: text("model").notNull(),
-  url: text("url").notNull(),
-  gpuAllocation: integer("gpu_allocation").notNull(),
-  status: endpointStatusEnum("status").notNull().default("provisioning"),
+  name: text("name").notNull(),
+  kind: text("kind").notNull(),
+  format: text("format").notNull(),
+  storagePath: text("storage_path").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  checksumSha256: text("checksum_sha256"),
   createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
