@@ -68,15 +68,20 @@ Environment variables:
 | `DATABASE_MAX_CONNECTIONS` | `packages/db` | Max DB pool size for Postgres client. | `10` |
 | `PORT` | `apps/control` | HTTP port for control API server. | `8080` |
 | `CONTROL_API_KEY` | `apps/control` | If set, all endpoints except `/healthz` require bearer auth. | empty (auth disabled) |
+| `CONTROL_API_KEYS_JSON` | `apps/control` | Multi-key auth map for teams (`{"token":{"user":"u","role":"admin"}}`); overrides `CONTROL_API_KEY` when set. | empty |
 | `SLURM_MOCK_MODE` | `apps/control` | Scheduler/log adapter mock mode toggle (`false` = real SLURM). | enabled unless explicitly `false` |
 | `SCHEDULER_BACKEND` | `apps/control` | Runtime backend for job execution: `slurm` or `k8s`. | `slurm` |
 | `SLURM_SCRIPTS_DIR` | `apps/control` | Directory where generated sbatch wrapper scripts are written. | `/tmp/openhorizon/slurm` |
 | `SLURM_LOGS_DIR` | `apps/control` | Directory where SLURM job stdout/stderr logs are written. | `/tmp/openhorizon/logs` |
 | `K8S_NAMESPACE` | `apps/control` | Kubernetes namespace for training Jobs (k8s backend only). | `default` |
 | `K8S_TRAIN_IMAGE` | `apps/control` | Container image used for training Job execution (k8s backend only). | `python:3.11` |
+| `STATUS_RECONCILER_ENABLED` | `apps/control` | Enables background scheduler status reconciliation loop. | `true` |
+| `STATUS_RECONCILER_INTERVAL_MS` | `apps/control` | Polling interval for reconciler loop. | `10000` |
+| `STATUS_RECONCILER_BATCH_SIZE` | `apps/control` | Max active jobs reconciled per poll cycle. | `50` |
 | `OHCTL_API_BASE_URL` | `packages/ohforge` | Base URL for CLI API requests. | `http://localhost:8080` |
 | `OHCTL_API_KEY` | `packages/ohforge` | Bearer token used by CLI for protected control API. | empty |
 | `OHFORGE_API_BASE_URL` | `packages/ohforge` | Legacy alias for CLI base URL (backward compatibility). | none |
+| `DATABASE_URL_FILE` | `packages/db` | File-based secret alternative for `DATABASE_URL`. | empty |
 
 Setup:
 - DB package env: copy `packages/db/.env.example` to `packages/db/.env`
@@ -120,13 +125,14 @@ Setup:
 - Workflow: `.github/workflows/ci.yml`
 - Runs on PRs and pushes to `main`:
   - monorepo typecheck + lint
-  - control API smoke test with Postgres
   - `ohctl` build + `ohctl version` on Linux/macOS/Windows
 
 ## Operations
 
 - Migration/backup/restore runbook:
   - `docs/OPERATIONS.md`
+- End-user train workflow:
+  - `docs/USER_QUICKSTART.md`
 
 ## DGX Setup
 

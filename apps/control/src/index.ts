@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { readFileSync } from "node:fs";
 import {
   createJobRequestSchema,
   createJobResponseSchema,
@@ -28,8 +29,42 @@ import { cancelJob, getJobStatus, readJobLogs, submitJob } from "./modules/slurm
 
 await bootstrapDatabase();
 
-const app = new Hono();
-const controlAPIKey = process.env.CONTROL_API_KEY;
+type AuthContext = {
+  user: string;
+  role: string;
+};
+
+const app = new Hono<{ Variables: { auth: AuthContext | null } }>();
+
+function readEnvOrFile(name: string) {
+  const direct = process.env[name];
+  if (direct && direct.trim() !== "") {
+    return direct;
+  }
+  const fileVar = process.env[`${name}_FILE`];
+  if (!fileVar) {
+    return undefined;
+  }
+  try {
+    return readFileSync(fileVar, "utf8").trim();
+  } catch {
+    return undefined;
+  }
+}
+
+const controlAPIKey = readEnvOrFile("CONTROL_API_KEY");
+const controlAPIKeysJSON = readEnvOrFile("CONTROL_API_KEYS_JSON");
+const parsedAPIKeys = (() => {
+  if (!controlAPIKeysJSON) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(controlAPIKeysJSON) as Record<string, { user?: string; role?: string }>;
+    return parsed;
+  } catch {
+    return null;
+  }
+})();
 const reconcilerEnabled = process.env.STATUS_RECONCILER_ENABLED !== "false";
 const reconcilerIntervalMs = Math.max(
   2000,
@@ -41,16 +76,33 @@ const reconcilerBatchSize = Math.max(
 );
 
 app.use("*", async (c, next) => {
-  if (!controlAPIKey || c.req.path === "/healthz") {
+  if (c.req.path === "/healthz") {
+    c.set("auth", null);
     await next();
     return;
   }
 
   const authHeader = c.req.header("authorization");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+
+  if (parsedAPIKeys) {
+    if (!token || !parsedAPIKeys[token]) {
+      throw new HTTPException(401, { message: "Unauthorized" });
+    }
+    const identity = parsedAPIKeys[token];
+    c.set("auth", {
+      user: identity.user ?? "unknown",
+      role: identity.role ?? "user",
+    });
+    await next();
+    return;
+  }
+
   const expected = `Bearer ${controlAPIKey}`;
-  if (!authHeader || authHeader !== expected) {
+  if (controlAPIKey && (!authHeader || authHeader !== expected)) {
     throw new HTTPException(401, { message: "Unauthorized" });
   }
+  c.set("auth", controlAPIKey ? { user: "legacy-key", role: "admin" } : null);
 
   await next();
 });
@@ -60,6 +112,18 @@ app.get("/healthz", (c) => {
     ok: true,
     service: "openhorizon-control",
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/v1/auth/me", (c) => {
+  const auth = c.get("auth");
+  if (!auth) {
+    return c.json({ authenticated: false, user: null, role: null });
+  }
+  return c.json({
+    authenticated: true,
+    user: auth.user,
+    role: auth.role,
   });
 });
 

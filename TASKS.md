@@ -48,25 +48,25 @@ Status legend:
 - [x] Add backup/restore runbook
 
 ## CI/CD & Releases
-- [x] CI workflow: lint/typecheck/api smoke
+- [x] CI workflow: lint/typecheck + cross-platform CLI build
 - [x] Cross-platform CLI checks (Linux/macOS/Windows)
 - [x] GoReleaser workflow for tagged releases
 - [x] Windows release artifacts (`ohctl.exe` in zip)
-- [ ] Add signed checksums + provenance/SBOM
-- [ ] Add staged release process (rc -> stable)
+- [x] Add signed checksums + provenance/SBOM
+- [x] Add staged release process (rc -> stable)
 
 ## Docs
 - [x] Root README quickstart
 - [x] CLI README
 - [x] Environment variable reference (what each env var is used for)
 - [x] Task tracker (`TASKS.md`)
-- [-] Operator deployment guide (DGX + SLURM + Postgres + MinIO)
+- [x] Operator deployment guide (DGX + SLURM + K8s + Postgres)
 - [x] K8s namespace-only setup path for restricted DGX access
-- [ ] User quickstart for end-to-end train workflow
+- [x] User quickstart for end-to-end train workflow
 
 ## Production Readiness Exit Criteria
 - [-] Real training run writes checkpoints and final artifacts end-to-end
 - [-] Resume flow validated on failed/interrupted jobs
 - [-] 8 concurrent jobs tested with acceptable stability
-- [x] Auth enabled and validated in CI
+- [-] Auth enabled and validated in runtime verification
 - [-] Release pipeline used to publish at least one tagged version

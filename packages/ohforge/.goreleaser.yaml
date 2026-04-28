@@ -34,7 +34,32 @@ archives:
 checksum:
   name_template: checksums.txt
 
+sboms:
+  - id: archives
+    artifacts: archive
+
+signs:
+  - id: checksum-signature
+    artifacts: checksum
+    cmd: gpg
+    args:
+      - "--batch"
+      - "--yes"
+      - "--armor"
+      - "--pinentry-mode"
+      - "loopback"
+      - "--passphrase"
+      - "{{ .Env.GPG_PASSPHRASE }}"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+    disable: "{{ if or (eq .Env.GPG_FINGERPRINT \"\") (eq .Env.GPG_PASSPHRASE \"\") }}true{{ else }}false{{ end }}"
+
 release:
+  prerelease: auto
   github:
     owner: openhorizon
     name: openhorizon-forge

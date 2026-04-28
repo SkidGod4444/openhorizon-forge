@@ -1,10 +1,11 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { readEnvOrFile } from "./env.js";
 import * as schema from "./schema.js";
 
 const databaseUrl =
-  process.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/openhorizon";
+  readEnvOrFile("DATABASE_URL") ?? "postgres://postgres:postgres@localhost:5432/openhorizon";
 
 export const sql = postgres(databaseUrl, {
   // Required for Supabase transaction pooler mode.
