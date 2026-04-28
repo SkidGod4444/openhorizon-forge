@@ -25,7 +25,7 @@ Status legend:
 - [x] Checkpoint listing and resume-from-checkpoint
 - [x] Artifact metadata table and artifact APIs
 - [x] Final artifact generation from real training output path (artifact finalize API + DGX helper script)
-- [ ] Robust status reconciliation loop (poller/worker instead of on-demand sync)
+- [x] Robust status reconciliation loop (poller/worker instead of on-demand sync)
 
 ## Security
 - [x] Optional API key auth in control API (`CONTROL_API_KEY`)
@@ -38,14 +38,14 @@ Status legend:
 - [x] Short-style positional IDs (`ohctl job status <job-id>`)
 - [x] Artifact commands
 - [x] `ohctl version` command with build metadata
-- [ ] Shell completion scripts (bash/zsh/powershell)
-- [ ] Better UX output formatting (tables + concise summaries)
+- [x] Shell completion scripts (bash/zsh/powershell)
+- [x] Better UX output formatting (tables + concise summaries)
 
 ## Database & Migrations
 - [x] Drizzle schema + bootstrap init
 - [x] Migration generation and migrate flow
-- [ ] Add forward-only production migration policy doc
-- [ ] Add backup/restore runbook
+- [x] Add forward-only production migration policy doc
+- [x] Add backup/restore runbook
 
 ## CI/CD & Releases
 - [x] CI workflow: lint/typecheck/api smoke
@@ -65,8 +65,8 @@ Status legend:
 - [ ] User quickstart for end-to-end train workflow
 
 ## Production Readiness Exit Criteria
-- [ ] Real training run writes checkpoints and final artifacts end-to-end
-- [ ] Resume flow validated on failed/interrupted jobs
-- [ ] 8 concurrent jobs tested with acceptable stability
-- [ ] Auth enabled and validated in CI
-- [ ] Release pipeline used to publish at least one tagged version
+- [-] Real training run writes checkpoints and final artifacts end-to-end
+- [-] Resume flow validated on failed/interrupted jobs
+- [-] 8 concurrent jobs tested with acceptable stability
+- [x] Auth enabled and validated in CI
+- [-] Release pipeline used to publish at least one tagged version

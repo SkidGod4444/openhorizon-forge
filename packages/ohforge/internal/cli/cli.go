@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 var (
@@ -32,6 +34,8 @@ func Run(args []string) error {
 		return runJob(args[1:])
 	case "version":
 		return runVersion()
+	case "completion":
+		return runCompletion(args[1:])
 	default:
 		printUsage()
 		return nil
@@ -51,6 +55,7 @@ func printUsage() {
   job artifact get <job-id> <artifact-id>
   job resume <job-id> --checkpoint <step-1000|checkpoint-id> [--requestedBy <user>]
   version
+  completion <bash|zsh|powershell>
 
 Compatibility:
   You can still use --job-id for all job commands.`)
@@ -106,6 +111,13 @@ func doRequest(method string, path string, body any) error {
 	}
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("HTTP %d %s: %s", resp.StatusCode, path, string(data))
+	}
+
+	if os.Getenv("OHCTL_OUTPUT") == "table" {
+		if rendered := renderTable(data); rendered != "" {
+			_, _ = os.Stdout.WriteString(rendered + "\n")
+			return nil
+		}
 	}
 
 	var out bytes.Buffer
@@ -248,4 +260,184 @@ func runVersion() error {
 	_, _ = os.Stdout.Write(data)
 	_, _ = os.Stdout.Write([]byte("\n"))
 	return nil
+}
+
+func runCompletion(args []string) error {
+	if len(args) < 1 {
+		return errors.New("usage: completion <bash|zsh|powershell>")
+	}
+	switch args[0] {
+	case "bash":
+		fmt.Println(`_ohctl_completions() {
+  local cur prev
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+  local commands="job version completion"
+  local job_subcommands="push list status logs sync cancel checkpoints artifacts artifact resume"
+  local comp_subcommands="bash zsh powershell"
+  if [[ ${COMP_CWORD} -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
+    return 0
+  fi
+  if [[ ${COMP_WORDS[1]} == "job" && ${COMP_CWORD} -eq 2 ]]; then
+    COMPREPLY=( $(compgen -W "${job_subcommands}" -- "${cur}") )
+    return 0
+  fi
+  if [[ ${COMP_WORDS[1]} == "completion" && ${COMP_CWORD} -eq 2 ]]; then
+    COMPREPLY=( $(compgen -W "${comp_subcommands}" -- "${cur}") )
+    return 0
+  fi
+}
+complete -F _ohctl_completions ohctl`)
+	case "zsh":
+		fmt.Println(`#compdef ohctl
+_ohctl() {
+  local -a commands
+  commands=(
+    'job:job commands'
+    'version:print version'
+    'completion:print shell completion'
+  )
+  _arguments '1: :->cmds'
+  case $state in
+    cmds)
+      _describe -t commands 'ohctl commands' commands
+      ;;
+  esac
+}
+_ohctl "$@"`)
+	case "powershell":
+		fmt.Println(`Register-ArgumentCompleter -CommandName ohctl -ScriptBlock {
+  param($wordToComplete, $commandAst, $cursorPosition)
+  $commands = @("job","version","completion")
+  $commands | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    [System.Management.Automation.CompletionResult]::new($_, $_, "ParameterValue", $_)
+  }
+}`)
+	default:
+		return errors.New("unknown shell; expected bash|zsh|powershell")
+	}
+	return nil
+}
+
+func renderTable(data []byte) string {
+	var parsed any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return ""
+	}
+	root, ok := parsed.(map[string]any)
+	if !ok {
+		return ""
+	}
+	itemsRaw, ok := root["items"]
+	if !ok {
+		return ""
+	}
+	items, ok := itemsRaw.([]any)
+	if !ok || len(items) == 0 {
+		return "No items."
+	}
+
+	rows := make([]map[string]string, 0, len(items))
+	keySet := map[string]struct{}{}
+	for _, item := range items {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		row := map[string]string{}
+		for k, v := range obj {
+			switch t := v.(type) {
+			case string:
+				row[k] = t
+			case float64:
+				row[k] = strconv.FormatFloat(t, 'f', -1, 64)
+			case bool:
+				row[k] = strconv.FormatBool(t)
+			default:
+				encoded, _ := json.Marshal(t)
+				row[k] = string(encoded)
+			}
+			keySet[k] = struct{}{}
+		}
+		rows = append(rows, row)
+	}
+	if len(rows) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(keySet))
+	for k := range keySet {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	preferred := []string{"jobId", "status", "requestedBy", "slurmJobId", "gpus", "nodes", "id", "name", "kind", "format", "sizeBytes", "createdAt"}
+	keys = sortColumns(keys, preferred)
+
+	width := map[string]int{}
+	for _, k := range keys {
+		width[k] = len(k)
+	}
+	for _, row := range rows {
+		for _, k := range keys {
+			if l := len(row[k]); l > width[k] {
+				width[k] = l
+			}
+		}
+	}
+
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString("  ")
+		}
+		b.WriteString(padRight(k, width[k]))
+	}
+	b.WriteString("\n")
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString("  ")
+		}
+		b.WriteString(strings.Repeat("-", width[k]))
+	}
+	b.WriteString("\n")
+	for _, row := range rows {
+		for i, k := range keys {
+			if i > 0 {
+				b.WriteString("  ")
+			}
+			b.WriteString(padRight(row[k], width[k]))
+		}
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func padRight(value string, n int) string {
+	if len(value) >= n {
+		return value
+	}
+	return value + strings.Repeat(" ", n-len(value))
+}
+
+func sortColumns(keys []string, preferred []string) []string {
+	set := map[string]struct{}{}
+	for _, k := range keys {
+		set[k] = struct{}{}
+	}
+	out := make([]string, 0, len(keys))
+	for _, k := range preferred {
+		if _, ok := set[k]; ok {
+			out = append(out, k)
+			delete(set, k)
+		}
+	}
+	rest := make([]string, 0, len(set))
+	for k := range set {
+		rest = append(rest, k)
+	}
+	sort.Strings(rest)
+	out = append(out, rest...)
+	return out
 }

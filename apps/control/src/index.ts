@@ -20,6 +20,7 @@ import {
   listCheckpointsForJob,
   listJobs,
   listRecentEvents,
+  listSchedulerSyncCandidates,
   markJobCancelled,
   syncJobStatus,
 } from "./modules/jobs/repository.js";
@@ -29,6 +30,15 @@ await bootstrapDatabase();
 
 const app = new Hono();
 const controlAPIKey = process.env.CONTROL_API_KEY;
+const reconcilerEnabled = process.env.STATUS_RECONCILER_ENABLED !== "false";
+const reconcilerIntervalMs = Math.max(
+  2000,
+  Number.parseInt(process.env.STATUS_RECONCILER_INTERVAL_MS ?? "10000", 10) || 10000,
+);
+const reconcilerBatchSize = Math.max(
+  1,
+  Number.parseInt(process.env.STATUS_RECONCILER_BATCH_SIZE ?? "50", 10) || 50,
+);
 
 app.use("*", async (c, next) => {
   if (!controlAPIKey || c.req.path === "/healthz") {
@@ -52,6 +62,26 @@ app.get("/healthz", (c) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+if (reconcilerEnabled) {
+  setInterval(async () => {
+    try {
+      const jobs = await listSchedulerSyncCandidates(reconcilerBatchSize);
+      for (const job of jobs) {
+        if (!job.slurmJobId) {
+          continue;
+        }
+        const schedulerStatus = await getJobStatus(job.slurmJobId);
+        const updated = await syncJobStatus(job.id, schedulerStatus.status, schedulerStatus.slurmState);
+        if (updated?.status === "completed") {
+          await ensureFinalModelArtifact(updated.id);
+        }
+      }
+    } catch (error) {
+      console.error("status_reconciler_error", error);
+    }
+  }, reconcilerIntervalMs);
+}
 
 app.get("/v1/jobs", async (c) => {
   const requestedBy = c.req.query("requestedBy");

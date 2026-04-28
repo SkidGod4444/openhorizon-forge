@@ -44,6 +44,8 @@ Examples:
   - Output binary: `bin/ohctl`
 - Version:
   - `bun run cli:run -- version`
+- Table output mode for list endpoints:
+  - `OHCTL_OUTPUT=table bun run cli:run -- job list`
 
 ## Release distribution (macOS/Linux/Windows)
 
@@ -55,6 +57,15 @@ Examples:
   - `ohctl-v1.0.0`
 
 Windows artifacts are produced as `.zip` archives and include `ohctl.exe`.
+
+## Shell completions
+
+- Bash:
+  - `ohctl completion bash > /etc/bash_completion.d/ohctl`
+- Zsh:
+  - `ohctl completion zsh > ~/.zfunc/_ohctl`
+- PowerShell:
+  - `ohctl completion powershell | Out-String | Invoke-Expression`
 
 ## Where to modify behavior
 

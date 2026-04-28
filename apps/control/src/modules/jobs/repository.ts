@@ -1,6 +1,6 @@
 import type { CreateJobRequest } from "@openhorizon/contracts";
 import { checkpoints, db, jobArtifacts, jobEvents, jobs } from "@openhorizon/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 
 export async function createJob(payload: CreateJobRequest) {
   const now = new Date();
@@ -169,6 +169,20 @@ export async function listJobs(input: ListJobsInput) {
     items: rows,
     total: totalRows.length,
   };
+}
+
+export async function listSchedulerSyncCandidates(limit = 100) {
+  return db
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        inArray(jobs.status, ["queued", "running"]),
+        isNotNull(jobs.slurmJobId),
+      ),
+    )
+    .orderBy(desc(jobs.updatedAt))
+    .limit(limit);
 }
 
 export async function listCheckpointsForJob(jobId: string, limit = 50) {

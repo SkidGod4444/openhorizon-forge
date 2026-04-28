@@ -123,6 +123,11 @@ Setup:
   - control API smoke test with Postgres
   - `ohctl` build + `ohctl version` on Linux/macOS/Windows
 
+## Operations
+
+- Migration/backup/restore runbook:
+  - `docs/OPERATIONS.md`
+
 ## DGX Setup
 
 - DGX/SLURM runbook:

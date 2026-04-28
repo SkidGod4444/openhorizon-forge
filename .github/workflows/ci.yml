@@ -61,6 +61,7 @@ jobs:
           DATABASE_MAX_CONNECTIONS: "10"
           PORT: "8080"
           SLURM_MOCK_MODE: "true"
+          CONTROL_API_KEY: "ci-test-key"
         run: |
           bun --cwd apps/control run dev > /tmp/control.log 2>&1 &
           for i in {1..30}; do
@@ -75,7 +76,9 @@ jobs:
         env:
           BASE_URL: http://localhost:8080
         run: |
-          curl -sf "$BASE_URL/v1/jobs?limit=1"
+          status_code="$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/v1/jobs?limit=1")"
+          test "$status_code" = "401"
+          curl -sf -H "Authorization: Bearer ci-test-key" "$BASE_URL/v1/jobs?limit=1"
 
   cli-cross-platform:
     runs-on: ${{ matrix.os }}
